@@ -1,0 +1,12 @@
+{
+  "name": "repowiki",
+  "description": "Convert any code repository into a rich Obsidian-compatible wiki using multi-agent analysis",
+  "version": "1.0.0",
+  "author": {
+    "name": "coentraojpt",
+    "email": "coentrao.jpt@gmail.com"
+  },
+  "homepage": "https://github.com/coentraojpt/repowiki-plugin",
+  "license": "MIT",
+  "keywords": ["wiki", "documentation", "obsidian", "knowledge-base", "code-analysis"]
+}
