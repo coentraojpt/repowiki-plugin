@@ -32,7 +32,7 @@ class TestCache(unittest.TestCase):
 
     def test_md5_missing_file_returns_fallback(self):
         result = _md5(self.dir / "nonexistent.py")
-        self.assertEqual(len(result), 8)
+        self.assertEqual(result, "00000000")
 
     def test_load_cache_missing_returns_empty(self):
         cache = _load_cache(self.dir / "nonexistent.json")
