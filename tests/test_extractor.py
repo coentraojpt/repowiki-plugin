@@ -143,5 +143,70 @@ class TestPythonShallow(unittest.TestCase):
         self.assertIn("name: str", result)
 
 
+MEDIUM_PY = """\
+class Viagem(BaseModel):
+    empresa = ForeignKey(Empresa, on_delete=CASCADE)
+    origem = CharField(max_length=100)
+    destino = CharField(max_length=100)
+
+    def get_duracao(self):
+        \"\"\"Duração em minutos.\"\"\"
+        if not self.data_chegada:
+            return None
+        return (self.data_chegada - self.data_partida).seconds // 60
+
+    def is_disponivel(self):
+        return self.lugares_disponiveis > 0
+"""
+
+
+class TestPythonMedium(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.dir = Path(self.tmp.name)
+        self.f = self.dir / "models.py"
+        self.f.write_text(MEDIUM_PY)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_header_shows_medium(self):
+        result = _extract_python(self.f, "medium")
+        self.assertIn("medium", result)
+
+    def test_no_imports_block_in_medium(self):
+        src = "import os\n\nclass Foo:\n    pass\n"
+        f = self.dir / "imp.py"
+        f.write_text(src)
+        result = _extract_python(f, "medium")
+        self.assertNotIn("imports:", result)
+
+    def test_field_with_type_present(self):
+        result = _extract_python(self.f, "medium")
+        self.assertIn("origem", result)
+        self.assertIn("CharField", result)
+
+    def test_method_signature_present(self):
+        result = _extract_python(self.f, "medium")
+        self.assertIn("def get_duracao", result)
+
+    def test_docstring_present(self):
+        result = _extract_python(self.f, "medium")
+        self.assertIn("Duração em minutos", result)
+
+    def test_body_preview_present(self):
+        result = _extract_python(self.f, "medium")
+        self.assertIn("data_chegada", result)
+
+    def test_body_preview_capped_at_5_lines(self):
+        long_body = "class X:\n    def foo(self):\n" + "\n".join(
+            f"        x{i} = {i}" for i in range(20)
+        ) + "\n"
+        f = self.dir / "long.py"
+        f.write_text(long_body)
+        result = _extract_python(f, "medium")
+        self.assertNotIn("x10 =", result)
+
+
 if __name__ == "__main__":
     unittest.main()

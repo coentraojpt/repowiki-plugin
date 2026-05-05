@@ -79,6 +79,7 @@ def _extract_python(file_path: Path, depth: str) -> str:
     try:
         source = file_path.read_text(encoding="utf-8", errors="ignore")
         tree = ast.parse(source)
+        lines = source.splitlines()
     except Exception:
         return _extract_regex(file_path, depth, "py")
 
@@ -117,7 +118,10 @@ def _extract_python(file_path: Path, depth: str) -> str:
                         func = child.value.func
                         fname = (func.attr if isinstance(func, ast.Attribute)
                                  else func.id if isinstance(func, ast.Name) else "")
-                        fields.append(f"{t.id}({_field_abbr(fname, child.value)})")
+                        if depth == "shallow":
+                            fields.append(f"{t.id}({_field_abbr(fname, child.value)})")
+                        else:
+                            fields.append(f"{t.id}({fname})")
                     else:
                         fields.append(t.id)
             elif isinstance(child, ast.AnnAssign) and isinstance(child.target, ast.Name):
@@ -132,5 +136,43 @@ def _extract_python(file_path: Path, depth: str) -> str:
         ]
         if depth == "shallow" and methods:
             out.append(f"  methods: {', '.join(m.name + '()' for m in methods)}")
+        elif depth == "medium":
+            for m in methods:
+                decs = []
+                for dec in m.decorator_list:
+                    if isinstance(dec, ast.Name):
+                        decs.append(f"  @{dec.id}")
+                    elif isinstance(dec, ast.Call) and isinstance(dec.func, ast.Name):
+                        decs.append(f"  @{dec.func.id}(...)")
+                out.extend(decs)
+
+                args = [a.arg for a in m.args.args if a.arg != "self"][:4]
+                sig = f"self, {', '.join(args)}" if args else "self"
+                out.append(f"\n  def {m.name}({sig}):")
+
+                doc = ast.get_docstring(m)
+                if doc:
+                    out.append(f'    """{doc.splitlines()[0]}"""')
+
+                body_nodes = list(m.body)
+                # Skip docstring node (Expr containing a Constant string)
+                if (body_nodes
+                        and isinstance(body_nodes[0], ast.Expr)
+                        and isinstance(getattr(body_nodes[0], "value", None), ast.Constant)
+                        and isinstance(body_nodes[0].value.value, str)):
+                    body_nodes = body_nodes[1:]
+
+                preview = 0
+                for bn in body_nodes:
+                    if preview >= 5:
+                        break
+                    start = bn.lineno - 1
+                    end = getattr(bn, "end_lineno", bn.lineno)
+                    for raw in lines[start:end]:
+                        if raw.strip():
+                            out.append(f"  {raw.rstrip()}")
+                            preview += 1
+                            if preview >= 5:
+                                break
 
     return "\n".join(out)
