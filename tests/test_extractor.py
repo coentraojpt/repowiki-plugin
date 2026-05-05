@@ -207,6 +207,47 @@ class TestPythonMedium(unittest.TestCase):
         result = _extract_python(f, "medium")
         self.assertNotIn("x10 =", result)
 
+    def test_decorator_emitted(self):
+        src = (
+            "class Foo:\n"
+            "    @staticmethod\n"
+            "    def bar():\n"
+            "        return 1\n"
+            "\n"
+            "    @some_module.cached\n"
+            "    def baz(self):\n"
+            "        return 2\n"
+        )
+        f = self.dir / "dec.py"
+        f.write_text(src)
+        result = _extract_python(f, "medium")
+        self.assertIn("@staticmethod", result)
+        self.assertIn("@cached", result)
+
+    def test_args_truncated_at_4(self):
+        src = (
+            "class Foo:\n"
+            "    def many(self, a, b, c, d, e, f):\n"
+            "        pass\n"
+        )
+        f = self.dir / "args.py"
+        f.write_text(src)
+        result = _extract_python(f, "medium")
+        self.assertIn("def many", result)
+        self.assertNotIn("e,", result)
+        self.assertNotIn("f)", result)
+
+    def test_body_cap_shows_early_lines(self):
+        long_body = "class X:\n    def foo(self):\n" + "\n".join(
+            f"        x{i} = {i}" for i in range(20)
+        ) + "\n"
+        f = self.dir / "early.py"
+        f.write_text(long_body)
+        result = _extract_python(f, "medium")
+        self.assertIn("x0 =", result)
+        self.assertIn("x4 =", result)
+        self.assertNotIn("x5 =", result)
+
 
 if __name__ == "__main__":
     unittest.main()

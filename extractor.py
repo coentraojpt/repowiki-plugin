@@ -142,8 +142,12 @@ def _extract_python(file_path: Path, depth: str) -> str:
                 for dec in m.decorator_list:
                     if isinstance(dec, ast.Name):
                         decs.append(f"  @{dec.id}")
+                    elif isinstance(dec, ast.Attribute):
+                        decs.append(f"  @{dec.attr}")
                     elif isinstance(dec, ast.Call) and isinstance(dec.func, ast.Name):
                         decs.append(f"  @{dec.func.id}(...)")
+                    elif isinstance(dec, ast.Call) and isinstance(dec.func, ast.Attribute):
+                        decs.append(f"  @{dec.func.attr}(...)")
                 out.extend(decs)
 
                 args = [a.arg for a in m.args.args if a.arg != "self"][:4]
