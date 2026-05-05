@@ -70,6 +70,8 @@ def _ann_str(node: ast.expr) -> str:
         return node.attr
     if isinstance(node, ast.Subscript):
         return f"{_ann_str(node.value)}[...]"
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return node.value
     return "?"
 
 
@@ -92,7 +94,7 @@ def _extract_python(file_path: Path, depth: str) -> str:
         if mods:
             out.append(f"imports: {', '.join(mods[:8])}")
 
-    for node in ast.walk(tree):
+    for node in ast.iter_child_nodes(tree):
         if not isinstance(node, ast.ClassDef):
             continue
 

@@ -120,6 +120,28 @@ class TestPythonShallow(unittest.TestCase):
         result = _extract_python(bad, "shallow")
         self.assertIn("Foo", result)
 
+    def test_nested_class_not_emitted_as_top_level(self):
+        src = (
+            "class Outer:\n"
+            "    class Inner:\n"
+            "        pass\n"
+            "    def method(self):\n"
+            "        pass\n"
+        )
+        f = self.dir / "nested.py"
+        f.write_text(src)
+        result = _extract_python(f, "shallow")
+        self.assertIn("class Outer", result)
+        self.assertNotIn("class Inner", result)
+
+    def test_annotated_field_extracted(self):
+        src = "class Foo:\n    age: int\n    name: str\n"
+        f = self.dir / "ann.py"
+        f.write_text(src)
+        result = _extract_python(f, "shallow")
+        self.assertIn("age: int", result)
+        self.assertIn("name: str", result)
+
 
 if __name__ == "__main__":
     unittest.main()
