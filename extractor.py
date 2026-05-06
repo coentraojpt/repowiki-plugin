@@ -244,3 +244,84 @@ def _extract_python(file_path: Path, depth: str) -> str:
                                 break
 
     return "\n".join(out)
+
+
+_LANG_MAP: dict[str, str] = {
+    ".py": "py", ".js": "js", ".jsx": "js", ".ts": "ts", ".tsx": "ts",
+    ".go": "go", ".rb": "rb", ".java": "java", ".kt": "kt",
+    ".rs": "rs", ".php": "php",
+}
+
+
+def extract_file(file_path: Path, depth: str) -> str:
+    """Single-file dispatcher. Routes to _extract_python, _extract_regex, or raw read."""
+    if depth == "deep":
+        try:
+            return file_path.read_text(encoding="utf-8", errors="ignore")
+        except Exception:
+            return ""
+
+    suffix = file_path.suffix.lower()
+    lang = _LANG_MAP.get(suffix, "generic")
+
+    if suffix == ".py":
+        return _extract_python(file_path, depth)
+    return _extract_regex(file_path, depth, lang)
+
+
+def extract_repo(repo_root: Path, architecture: dict, depth: str, output_dir: Path) -> dict:
+    """
+    Extract code structure for all sections defined in architecture.
+
+    Returns:
+      {
+        "sections": {section_id: compressed_text_str},
+        "cache_hits": int,
+        "cache_misses": int,
+      }
+    """
+    cache_path = output_dir / ".extract_cache.json"
+    cache = _load_cache(cache_path)
+    entries = cache.setdefault("entries", {})
+
+    hits = 0
+    misses = 0
+    sections_text: dict[str, str] = {}
+
+    for section in architecture["sections"]:
+        parts: list[str] = []
+        for rel in section["key_files"]:
+            fp = repo_root / rel
+            if not fp.exists():
+                continue
+
+            if depth == "deep":
+                # Deep mode: never cached, read directly
+                try:
+                    parts.append(
+                        f"\n### {rel}\n```\n"
+                        f"{fp.read_text(encoding='utf-8', errors='ignore')[:3000]}\n```"
+                    )
+                except Exception:
+                    pass
+                continue
+
+            current_hash = _md5(fp)
+            entry = entries.get(rel, {})
+
+            if entry.get("hash") == current_hash and depth in entry:
+                parts.append(entry[depth])
+                hits += 1
+            else:
+                extracted = extract_file(fp, depth)
+                entries[rel] = {**entry, "hash": current_hash, depth: extracted}
+                parts.append(extracted)
+                misses += 1
+
+        sections_text[section["id"]] = "\n\n".join(parts)
+
+    if misses > 0:
+        output_dir.mkdir(parents=True, exist_ok=True)
+        _save_cache(cache_path, cache)
+
+    return {"sections": sections_text, "cache_hits": hits, "cache_misses": misses}

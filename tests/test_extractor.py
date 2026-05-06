@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from extractor import _md5, _load_cache, _save_cache, _extract_python, _extract_regex
+from extractor import _md5, _load_cache, _save_cache, _extract_python, _extract_regex, extract_file, extract_repo
 
 
 class TestCache(unittest.TestCase):
@@ -510,6 +510,111 @@ class TestRegexExtensionLangs(unittest.TestCase):
         f = self._write("UserRepository.php", SIMPLE_PHP)
         result = _extract_regex(f, "shallow", "php")
         self.assertIn("find", result)
+
+
+class TestExtractFile(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.dir = Path(self.tmp.name)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_py_shallow_uses_ast_header(self):
+        f = self.dir / "models.py"
+        f.write_text("class Foo:\n    pass\n")
+        result = extract_file(f, "shallow")
+        self.assertIn("python", result)
+
+    def test_js_routes_to_regex(self):
+        f = self.dir / "app.js"
+        f.write_text("function hello() { return 1; }\n")
+        result = extract_file(f, "shallow")
+        self.assertIn("[js", result)
+
+    def test_ts_routes_to_regex(self):
+        f = self.dir / "service.ts"
+        f.write_text("export class MyService {}\n")
+        result = extract_file(f, "shallow")
+        self.assertIn("[ts", result)
+
+    def test_go_routes_to_regex(self):
+        f = self.dir / "main.go"
+        f.write_text("type User struct {}\n")
+        result = extract_file(f, "shallow")
+        self.assertIn("[go", result)
+
+    def test_deep_returns_raw_content(self):
+        f = self.dir / "models.py"
+        content = "class Foo:\n    pass\n"
+        f.write_text(content)
+        self.assertEqual(extract_file(f, "deep"), content)
+
+    def test_unknown_extension_uses_generic(self):
+        f = self.dir / "Makefile"
+        f.write_text("build:\n\tgo build .\n")
+        result = extract_file(f, "shallow")
+        self.assertIn("generic", result)
+
+
+class TestExtractRepo(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.repo = Path(self.tmp.name) / "repo"
+        self.output = Path(self.tmp.name) / "output"
+        self.repo.mkdir()
+        self.output.mkdir()
+        (self.repo / "models.py").write_text(
+            "class User:\n    name = CharField(max_length=100)\n"
+        )
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def _arch(self, key_files=None):
+        return {"sections": [{"id": "database", "key_files": key_files or ["models.py"]}]}
+
+    def test_section_text_contains_class(self):
+        result = extract_repo(self.repo, self._arch(), "shallow", self.output)
+        self.assertIn("User", result["sections"]["database"])
+
+    def test_returns_dict_with_required_keys(self):
+        result = extract_repo(self.repo, self._arch(), "shallow", self.output)
+        self.assertIn("sections", result)
+        self.assertIn("cache_hits", result)
+        self.assertIn("cache_misses", result)
+
+    def test_first_run_all_misses(self):
+        result = extract_repo(self.repo, self._arch(), "shallow", self.output)
+        self.assertEqual(result["cache_misses"], 1)
+        self.assertEqual(result["cache_hits"], 0)
+
+    def test_second_run_all_hits(self):
+        extract_repo(self.repo, self._arch(), "shallow", self.output)
+        result = extract_repo(self.repo, self._arch(), "shallow", self.output)
+        self.assertEqual(result["cache_hits"], 1)
+        self.assertEqual(result["cache_misses"], 0)
+
+    def test_cache_invalidated_on_file_change(self):
+        extract_repo(self.repo, self._arch(), "shallow", self.output)
+        (self.repo / "models.py").write_text("class Product:\n    price = DecimalField()\n")
+        result = extract_repo(self.repo, self._arch(), "shallow", self.output)
+        self.assertEqual(result["cache_misses"], 1)
+        self.assertIn("Product", result["sections"]["database"])
+
+    def test_missing_file_skipped_gracefully(self):
+        arch = self._arch(["models.py", "nonexistent.py"])
+        result = extract_repo(self.repo, arch, "shallow", self.output)
+        self.assertIn("User", result["sections"]["database"])
+
+    def test_deep_mode_never_cached(self):
+        extract_repo(self.repo, self._arch(), "deep", self.output)
+        result = extract_repo(self.repo, self._arch(), "deep", self.output)
+        self.assertEqual(result["cache_hits"], 0)
+
+    def test_cache_file_written_to_output_dir(self):
+        extract_repo(self.repo, self._arch(), "shallow", self.output)
+        self.assertTrue((self.output / ".extract_cache.json").exists())
 
 
 if __name__ == "__main__":
