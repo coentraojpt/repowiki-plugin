@@ -296,7 +296,7 @@ def extract_repo(repo_root: Path, architecture: dict, depth: str, output_dir: Pa
                 continue
 
             if depth == "deep":
-                # Deep mode: never cached, read directly
+                # Deep mode: bypass extract_file — read raw and never cache
                 try:
                     parts.append(
                         f"\n### {rel}\n```\n"

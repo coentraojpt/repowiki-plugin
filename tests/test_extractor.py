@@ -606,11 +606,14 @@ class TestExtractRepo(unittest.TestCase):
         arch = self._arch(["models.py", "nonexistent.py"])
         result = extract_repo(self.repo, arch, "shallow", self.output)
         self.assertIn("User", result["sections"]["database"])
+        self.assertEqual(result["cache_misses"], 1)  # nonexistent.py not counted
+        self.assertNotIn("nonexistent", result["sections"]["database"])
 
     def test_deep_mode_never_cached(self):
         extract_repo(self.repo, self._arch(), "deep", self.output)
         result = extract_repo(self.repo, self._arch(), "deep", self.output)
         self.assertEqual(result["cache_hits"], 0)
+        self.assertIn("User", result["sections"]["database"])
 
     def test_cache_file_written_to_output_dir(self):
         extract_repo(self.repo, self._arch(), "shallow", self.output)
