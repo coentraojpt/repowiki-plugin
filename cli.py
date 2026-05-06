@@ -293,26 +293,6 @@ def plan_architecture(manifest: dict, section_filter: str | None = None) -> dict
 
 # ── Phase 3: Content generation ─────────────────────────────────────────────
 
-def read_files(repo_root: Path, paths: list[str], max_chars: int = 14000) -> dict[str, str]:
-    result: dict[str, str] = {}
-    budget = max_chars
-    for rel in paths:
-        if budget <= 0:
-            break
-        fp = repo_root / rel
-        if not fp.exists():
-            continue
-        try:
-            content = fp.read_text(encoding="utf-8", errors="ignore")
-            if len(content) > budget:
-                content = content[:budget] + "\n... [truncated]"
-            result[rel] = content
-            budget -= len(content)
-        except Exception:
-            pass
-    return result
-
-
 def build_prompt(section: dict, source_text: str, lang: str, depth: str = "medium") -> str:
     lang_note = "Escreve todo o conteúdo em Português (PT-PT)." if lang == "pt" \
                 else "Write all content in English."
@@ -349,7 +329,7 @@ tags: [<2-4 lowercase tags>]
 category: {section['output_dir']}
 wiki_version: 1.0
 generated: {TODAY}
-sources: {section.get('context', '')}
+sources: {', '.join(section.get('key_files', []))}
 ---
 
 # <Page Title>
@@ -660,7 +640,6 @@ First time? Install Ollama then pull a model:
 
     # ── Phase 3: Extract code structure
     print("\n[3/5] Extracting code structure...")
-    sys.path.insert(0, str(Path(__file__).parent))
     from extractor import extract_repo
     extracted = extract_repo(repo_root, architecture, args.depth, output_dir)
     print(f"      cached: {extracted['cache_hits']} files · extracted: {extracted['cache_misses']} files")
