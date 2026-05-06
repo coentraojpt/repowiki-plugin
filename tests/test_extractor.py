@@ -397,5 +397,120 @@ class TestRegexExtraction(unittest.TestCase):
         self.assertIn("[go · shallow]", result)
 
 
+SIMPLE_JAVA = """\
+package com.example;
+
+public class UserController {
+    private UserService service;
+
+    public User getUser(int id) {
+        return service.find(id);
+    }
+
+    private void validate(User u) {}
+}
+"""
+
+SIMPLE_RS = """\
+pub struct User {
+    pub name: String,
+    pub age: u32,
+}
+
+pub enum Status {
+    Active,
+    Inactive,
+}
+
+impl User {
+    pub fn new(name: String) -> Self {
+        User { name, age: 0 }
+    }
+}
+
+pub fn create_user(name: &str) -> User {
+    User::new(name.to_string())
+}
+"""
+
+SIMPLE_PHP = """\
+<?php
+class UserRepository {
+    private $db;
+
+    public function find(int $id): User {
+        return $this->db->find($id);
+    }
+
+    protected function validate(User $u): bool {
+        return true;
+    }
+}
+
+interface Cacheable {
+    public function getCacheKey(): string;
+}
+"""
+
+
+class TestRegexExtensionLangs(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.dir = Path(self.tmp.name)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def _write(self, name, content):
+        p = self.dir / name
+        p.write_text(content)
+        return p
+
+    def test_java_class_found(self):
+        f = self._write("UserController.java", SIMPLE_JAVA)
+        result = _extract_regex(f, "shallow", "java")
+        self.assertIn("UserController", result)
+
+    def test_java_method_found(self):
+        f = self._write("UserController.java", SIMPLE_JAVA)
+        result = _extract_regex(f, "shallow", "java")
+        self.assertIn("getUser", result)
+
+    def test_rust_struct_found(self):
+        f = self._write("models.rs", SIMPLE_RS)
+        result = _extract_regex(f, "shallow", "rs")
+        self.assertIn("User", result)
+
+    def test_rust_enum_found(self):
+        f = self._write("models.rs", SIMPLE_RS)
+        result = _extract_regex(f, "shallow", "rs")
+        self.assertIn("Status", result)
+
+    def test_rust_fn_found(self):
+        f = self._write("models.rs", SIMPLE_RS)
+        result = _extract_regex(f, "shallow", "rs")
+        self.assertIn("create_user", result)
+
+    def test_rust_impl_found(self):
+        f = self._write("models.rs", SIMPLE_RS)
+        result = _extract_regex(f, "shallow", "rs")
+        self.assertIn("User", result)
+
+    def test_php_class_found(self):
+        f = self._write("UserRepository.php", SIMPLE_PHP)
+        result = _extract_regex(f, "shallow", "php")
+        self.assertIn("UserRepository", result)
+
+    def test_php_interface_found(self):
+        f = self._write("UserRepository.php", SIMPLE_PHP)
+        result = _extract_regex(f, "shallow", "php")
+        self.assertIn("Cacheable", result)
+
+    def test_php_method_found(self):
+        f = self._write("UserRepository.php", SIMPLE_PHP)
+        result = _extract_regex(f, "shallow", "php")
+        self.assertIn("find", result)
+
+
 if __name__ == "__main__":
     unittest.main()
