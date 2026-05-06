@@ -371,6 +371,11 @@ class TestRegexExtraction(unittest.TestCase):
         result = _extract_regex(f, "shallow", "go")
         self.assertIn("GetUser", result)
 
+    def test_go_method_receiver_found(self):
+        f = self._write("main.go", SIMPLE_GO)
+        result = _extract_regex(f, "shallow", "go")
+        self.assertIn("Save", result)
+
     def test_rb_class_found(self):
         f = self._write("invoice.rb", SIMPLE_RB)
         result = _extract_regex(f, "shallow", "rb")

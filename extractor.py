@@ -93,7 +93,7 @@ def _extract_regex(file_path: Path, depth: str, lang: str) -> str:
 
     patterns = _REGEX_PATTERNS.get(lang, _GENERIC_PATTERNS)
     out = [f"# {file_path.name} [{lang} · {depth}]"]
-    seen: set[str] = set()
+    seen: set[str] = set()  # dedup by "kind: name" — same symbol in multiple scopes emits once
 
     for line in source.splitlines():
         stripped = line.strip()
