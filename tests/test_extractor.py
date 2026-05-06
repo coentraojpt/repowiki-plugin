@@ -619,6 +619,13 @@ class TestExtractRepo(unittest.TestCase):
         extract_repo(self.repo, self._arch(), "shallow", self.output)
         self.assertTrue((self.output / ".extract_cache.json").exists())
 
+    def test_shallow_cache_not_used_for_medium(self):
+        # A shallow-cached file should be a miss (not hit) when requested at medium
+        extract_repo(self.repo, self._arch(), "shallow", self.output)
+        result = extract_repo(self.repo, self._arch(), "medium", self.output)
+        self.assertEqual(result["cache_misses"], 1)
+        self.assertEqual(result["cache_hits"], 0)
+
 
 if __name__ == "__main__":
     unittest.main()

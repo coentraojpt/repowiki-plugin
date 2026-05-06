@@ -296,14 +296,10 @@ def extract_repo(repo_root: Path, architecture: dict, depth: str, output_dir: Pa
                 continue
 
             if depth == "deep":
-                # Deep mode: bypass extract_file — read raw and never cache
-                try:
-                    parts.append(
-                        f"\n### {rel}\n```\n"
-                        f"{fp.read_text(encoding='utf-8', errors='ignore')[:3000]}\n```"
-                    )
-                except Exception:
-                    pass
+                # Deep mode: bypass cache — read raw each time
+                raw = extract_file(fp, "deep")
+                if raw:
+                    parts.append(f"\n### {rel}\n```\n{raw[:3000]}\n```")
                 continue
 
             current_hash = _md5(fp)
