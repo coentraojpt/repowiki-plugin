@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from extractor import _md5, _load_cache, _save_cache, _extract_python
+from extractor import _md5, _load_cache, _save_cache, _extract_python, _extract_regex
 
 
 class TestCache(unittest.TestCase):
@@ -247,6 +247,149 @@ class TestPythonMedium(unittest.TestCase):
         self.assertIn("x0 =", result)
         self.assertIn("x4 =", result)
         self.assertNotIn("x5 =", result)
+
+
+SIMPLE_JS = """\
+import React from 'react';
+
+class UserCard extends Component {
+  render() { return null; }
+}
+
+function fetchUser(id) {
+  return fetch('/api/users/' + id);
+}
+
+const handleSubmit = async (event) => {
+  event.preventDefault();
+};
+
+export default UserCard;
+"""
+
+SIMPLE_TS = """\
+import { Injectable } from '@angular/core';
+
+export interface User {
+  id: number;
+  name: string;
+}
+
+export class UserService {
+  getUser(id: number): User {
+    return { id, name: '' };
+  }
+}
+"""
+
+SIMPLE_GO = """\
+package main
+
+type User struct {
+    Name string
+    Age  int
+}
+
+type Repository interface {
+    Find(id int) User
+}
+
+func GetUser(id int) User {
+    return User{}
+}
+
+func (r *UserRepo) Save(u User) error {
+    return nil
+}
+"""
+
+SIMPLE_RB = """\
+module Billing
+  class Invoice < ApplicationRecord
+    def total
+      items.sum(&:price)
+    end
+
+    def paid?
+      status == 'paid'
+    end
+  end
+end
+"""
+
+
+class TestRegexExtraction(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.dir = Path(self.tmp.name)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def _write(self, name, content):
+        p = self.dir / name
+        p.write_text(content)
+        return p
+
+    def test_js_class_found(self):
+        f = self._write("UserCard.js", SIMPLE_JS)
+        result = _extract_regex(f, "shallow", "js")
+        self.assertIn("UserCard", result)
+
+    def test_js_function_found(self):
+        f = self._write("UserCard.js", SIMPLE_JS)
+        result = _extract_regex(f, "shallow", "js")
+        self.assertIn("fetchUser", result)
+
+    def test_js_arrow_found(self):
+        f = self._write("UserCard.js", SIMPLE_JS)
+        result = _extract_regex(f, "shallow", "js")
+        self.assertIn("handleSubmit", result)
+
+    def test_ts_interface_found(self):
+        f = self._write("service.ts", SIMPLE_TS)
+        result = _extract_regex(f, "shallow", "ts")
+        self.assertIn("User", result)
+
+    def test_ts_class_found(self):
+        f = self._write("service.ts", SIMPLE_TS)
+        result = _extract_regex(f, "shallow", "ts")
+        self.assertIn("UserService", result)
+
+    def test_go_struct_found(self):
+        f = self._write("main.go", SIMPLE_GO)
+        result = _extract_regex(f, "shallow", "go")
+        self.assertIn("User", result)
+
+    def test_go_interface_found(self):
+        f = self._write("main.go", SIMPLE_GO)
+        result = _extract_regex(f, "shallow", "go")
+        self.assertIn("Repository", result)
+
+    def test_go_func_found(self):
+        f = self._write("main.go", SIMPLE_GO)
+        result = _extract_regex(f, "shallow", "go")
+        self.assertIn("GetUser", result)
+
+    def test_rb_class_found(self):
+        f = self._write("invoice.rb", SIMPLE_RB)
+        result = _extract_regex(f, "shallow", "rb")
+        self.assertIn("Invoice", result)
+
+    def test_rb_method_found(self):
+        f = self._write("invoice.rb", SIMPLE_RB)
+        result = _extract_regex(f, "shallow", "rb")
+        self.assertIn("total", result)
+
+    def test_generic_fallback_finds_symbols(self):
+        f = self._write("app.unknown", "class Foo:\n  def bar():\n    pass\n")
+        result = _extract_regex(f, "shallow", "generic")
+        self.assertIn("Foo", result)
+
+    def test_header_contains_lang_and_depth(self):
+        f = self._write("main.go", SIMPLE_GO)
+        result = _extract_regex(f, "shallow", "go")
+        self.assertIn("[go · shallow]", result)
 
 
 if __name__ == "__main__":

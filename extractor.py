@@ -32,19 +32,83 @@ def _save_cache(cache_path: Path, cache: dict) -> None:
     )
 
 
+_REGEX_PATTERNS: dict[str, list[tuple[str, str]]] = {
+    "js": [
+        (r"^export\s+(?:default\s+)?class\s+(\w+)", "class"),
+        (r"^class\s+(\w+)", "class"),
+        (r"^export\s+(?:default\s+)?function\s+(\w+)", "function"),
+        (r"^(?:async\s+)?function\s+(\w+)", "function"),
+        (r"^(?:const|let|var)\s+(\w+)\s*=\s*(?:async\s*)?\(", "arrow-fn"),
+        (r"^import\s+.+\s+from\s+['\"](.+)['\"]", "import"),
+    ],
+    "ts": [
+        (r"^export\s+(?:default\s+)?(?:abstract\s+)?class\s+(\w+)", "class"),
+        (r"^export\s+interface\s+(\w+)", "interface"),
+        (r"^export\s+type\s+(\w+)", "type"),
+        (r"^export\s+enum\s+(\w+)", "enum"),
+        (r"^export\s+(?:async\s+)?function\s+(\w+)", "function"),
+        (r"^(?:async\s+)?function\s+(\w+)", "function"),
+        (r"^import\s+.+\s+from\s+['\"](.+)['\"]", "import"),
+    ],
+    "go": [
+        (r"^type\s+(\w+)\s+struct\s*\{", "struct"),
+        (r"^type\s+(\w+)\s+interface\s*\{", "interface"),
+        (r"^func\s+(?:\(\w+\s+\*?\w+\)\s+)?(\w+)\s*\(", "func"),
+    ],
+    "rb": [
+        (r"^(?:class|module)\s+(\w+)", "class"),
+        (r"^\s*def\s+(\w+)", "method"),
+    ],
+    "java": [
+        (r"^(?:public\s+|private\s+|protected\s+)?(?:abstract\s+)?(?:class|interface|enum)\s+(\w+)", "class"),
+        (r"^\s*(?:public|private|protected)\s+\S+\s+(\w+)\s*\(", "method"),
+    ],
+    "kt": [
+        (r"^(?:data\s+|sealed\s+)?class\s+(\w+)", "class"),
+        (r"^(?:fun)\s+(\w+)", "func"),
+        (r"^interface\s+(\w+)", "interface"),
+    ],
+    "rs": [
+        (r"^(?:pub\s+)?struct\s+(\w+)", "struct"),
+        (r"^(?:pub\s+)?enum\s+(\w+)", "enum"),
+        (r"^(?:pub\s+)?fn\s+(\w+)", "fn"),
+        (r"^impl(?:\s+\w+\s+for)?\s+(\w+)", "impl"),
+    ],
+    "php": [
+        (r"^(?:class|interface|trait)\s+(\w+)", "class"),
+        (r"^\s*(?:public|private|protected)\s+function\s+(\w+)", "method"),
+    ],
+}
+
+_GENERIC_PATTERNS: list[tuple[str, str]] = [
+    (r"^(?:class|def|fn|func|function)\s+(\w+)", "symbol"),
+]
+
+
 def _extract_regex(file_path: Path, depth: str, lang: str) -> str:
-    """Stub — replaced in Task 4."""
     try:
         source = file_path.read_text(encoding="utf-8", errors="ignore")
     except Exception:
         return f"# {file_path.name} [unreadable]"
-    # Minimal generic fallback: find class/def lines
-    lines = [f"# {file_path.name} [{lang} · {depth}]"]
+
+    patterns = _REGEX_PATTERNS.get(lang, _GENERIC_PATTERNS)
+    out = [f"# {file_path.name} [{lang} · {depth}]"]
+    seen: set[str] = set()
+
     for line in source.splitlines():
-        m = re.match(r"^(class|def)\s+(\w+)", line.strip())
-        if m:
-            lines.append(f"{m.group(1)}: {m.group(2)}")
-    return "\n".join(lines) if len(lines) > 1 else lines[0] + "\n(no symbols found)"
+        stripped = line.strip()
+        for pattern, kind in patterns:
+            m = re.match(pattern, stripped)
+            if m:
+                entry = f"{kind}: {m.group(1)}"
+                if entry not in seen:
+                    out.append(entry)
+                    seen.add(entry)
+                break
+
+    if len(out) == 1:
+        out.append("(no symbols found)")
+    return "\n".join(out)
 
 
 def _field_abbr(fname: str, call: ast.Call) -> str:
