@@ -5,6 +5,16 @@ allowed-tools: Bash(mkdir:*), Bash(rm -rf:*), Bash(git diff:*), Bash(git log --o
 
 Convert the current repository into an Obsidian-compatible wiki by orchestrating a pipeline of specialized sub-agents. You are the **orchestrator** — you do NOT analyze code directly. You coordinate agents and pass information between them.
 
+## Usage Examples
+
+```
+python cli.py --section "Database"   # regenerate one section only
+python cli.py --dry-run              # preview plan without generating
+python cli.py --depth shallow        # fastest: ~90% fewer input tokens
+python cli.py --depth medium         # default: ~73% fewer tokens, includes method previews
+python cli.py --depth deep           # full source code (no compression)
+```
+
 ## Step 0: Parse Arguments
 
 The user may provide arguments. Parse them from the command args:
