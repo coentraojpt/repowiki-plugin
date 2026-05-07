@@ -641,5 +641,45 @@ class TestExtractRepo(unittest.TestCase):
         self.assertEqual(result["cache_hits"], 0)
 
 
+class TestPythonStandaloneFunctions(unittest.TestCase):
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self.tmp)
+
+    def _make(self, src: str) -> Path:
+        p = self.tmp / "funcs.py"
+        p.write_text(src, encoding="utf-8")
+        return p
+
+    def test_shallow_emits_standalone_functions(self):
+        src = "def foo(x, y):\n    return x + y\n"
+        result = _extract_python(self._make(src), "shallow")
+        self.assertIn("def foo(x, y):", result)
+
+    def test_medium_emits_standalone_functions_with_body(self):
+        src = "def bar(a):\n    \"\"\"Do bar.\"\"\"\n    return a * 2\n"
+        result = _extract_python(self._make(src), "medium")
+        self.assertIn("def bar(a):", result)
+        self.assertIn('"""Do bar."""', result)
+        self.assertIn("return a * 2", result)
+
+    def test_standalone_function_not_emitted_as_class(self):
+        src = "def baz():\n    pass\n"
+        result = _extract_python(self._make(src), "shallow")
+        self.assertNotIn("class", result)
+        self.assertIn("def baz():", result)
+
+    def test_class_methods_not_duplicated_as_standalone(self):
+        src = "class Foo:\n    def bar(self):\n        pass\n"
+        result = _extract_python(self._make(src), "shallow")
+        # In shallow mode class methods appear as "bar()" (no def keyword).
+        # The standalone loop must NOT emit a top-level "def bar" for it.
+        self.assertNotIn("\ndef bar", result)
+        self.assertIn("bar()", result)
+
+
 if __name__ == "__main__":
     unittest.main()

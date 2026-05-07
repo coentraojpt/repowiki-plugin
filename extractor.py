@@ -247,6 +247,56 @@ def _extract_python(file_path: Path, depth: str) -> str:
                             if preview >= 5:
                                 break
 
+    # Standalone module-level functions
+    for node in ast.iter_child_nodes(tree):
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+
+        args = [a.arg for a in node.args.args if a.arg != "self"][:4]
+        sig = ", ".join(args)
+
+        if depth == "shallow":
+            out.append(f"\ndef {node.name}({sig}):")
+        else:  # medium
+            decs = []
+            for dec in node.decorator_list:
+                if isinstance(dec, ast.Name):
+                    decs.append(f"@{dec.id}")
+                elif isinstance(dec, ast.Attribute):
+                    decs.append(f"@{dec.attr}")
+                elif isinstance(dec, ast.Call) and isinstance(dec.func, ast.Name):
+                    decs.append(f"@{dec.func.id}(...)")
+                elif isinstance(dec, ast.Call) and isinstance(dec.func, ast.Attribute):
+                    decs.append(f"@{dec.func.attr}(...)")
+            for d in decs:
+                out.append(d)
+
+            out.append(f"\ndef {node.name}({sig}):")
+
+            doc = ast.get_docstring(node)
+            if doc:
+                out.append(f'  """{doc.splitlines()[0]}"""')
+
+            body_nodes = list(node.body)
+            if (body_nodes
+                    and isinstance(body_nodes[0], ast.Expr)
+                    and isinstance(getattr(body_nodes[0], "value", None), ast.Constant)
+                    and isinstance(body_nodes[0].value.value, str)):
+                body_nodes = body_nodes[1:]
+
+            preview = 0
+            for bn in body_nodes:
+                if preview >= 5:
+                    break
+                start = bn.lineno - 1
+                end = getattr(bn, "end_lineno", bn.lineno)
+                for raw in lines[start:end]:
+                    if raw.strip():
+                        out.append(f"  {raw.rstrip()}")
+                        preview += 1
+                        if preview >= 5:
+                            break
+
     return "\n".join(out)
 
 
