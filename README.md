@@ -1,91 +1,41 @@
-# repowiki
+# repowiki — Claude Code Plugin
 
-Convert any code repository into a rich, navigable Obsidian wiki — **runs locally, no API keys, no accounts**.
+Convert any code repository into a rich, navigable Obsidian wiki directly from Claude Code — no Ollama, no API keys, no configuration.
+
+## Install
+
+```
+/plugin install https://github.com/coentraojpt/repowiki-plugin
+```
+
+## Usage
+
+```
+/repowiki                            # generate wiki for current repo → .repowiki/
+/repowiki --section "Database"       # regenerate one section only
+/repowiki --output docs/wiki         # custom output directory
+/repowiki --lang pt                  # Portuguese output (PT-PT)
+/repowiki --update                   # only regenerate sections with changed files
+```
+
+```
+/repowiki translate --to pt          # translate existing wiki to Portuguese
+/repowiki translate --to en          # translate existing wiki to English
+```
 
 ## How it works
 
-```
-your repo  →  repowiki  →  Obsidian vault
-```
+Four specialized agents run in sequence:
 
-Four agents work in sequence:
-1. **Discovery** — maps every file and detects your tech stack
-2. **Architect** — designs the wiki structure based on complexity
-3. **Specialists** — one per section, deep-reads source code in parallel
-4. **Finalizer** — resolves links, builds the index and knowledge graph
+```
+/repowiki
+    ├── [1] Discovery Agent     ← scans repo, builds manifest
+    ├── [2] Architect Agent     ← designs wiki structure
+    ├── [3..N] Specialist Agents ← one per section, run in parallel
+    └── [N+1] Finalizer Agent   ← resolves links, builds index
+```
 
 Output is Obsidian-compatible: `[[WikiLinks]]`, Mermaid diagrams, YAML frontmatter, source-attributed content.
-
----
-
-## Quickstart (2 steps)
-
-**Step 1 — Install Ollama** (free, runs on your machine):
-
-```
-https://ollama.com/download
-```
-
-**Step 2 — Pull a model and run:**
-
-```bash
-ollama pull gemma4:9b
-
-cd /your/project
-python /path/to/repowiki/cli.py
-```
-
-That's it. repowiki auto-detects the best model you have installed.
-
----
-
-## Open in Obsidian
-
-After generation, open the output as a vault:
-
-`Obsidian → Settings (⚙) → Open vault → select .repowiki/`
-
-Start at `index.md`.
-
----
-
-## Options
-
-```bash
-python cli.py                        # auto-detect model, output → .repowiki/
-python cli.py --model gemma4:9b      # pick a specific model
-python cli.py --output docs/wiki     # custom output directory
-python cli.py --lang pt              # Portuguese output
-python cli.py --section "Database"   # regenerate one section only
-python cli.py --dry-run              # preview plan without generating
-```
-
----
-
-## Recommended models
-
-| Model | Size | Notes | Install |
-|---|---|---|---|
-| `gemma4:9b` | ~6 GB | Best balance — recommended | `ollama pull gemma4:9b` |
-| `qwen2.5:7b` | ~5 GB | Strong code understanding | `ollama pull qwen2.5:7b` |
-| `llama3.1:8b` | ~5 GB | Good general purpose | `ollama pull llama3.1:8b` |
-| `gemma4` | ~2 GB | Fast, limited context | `ollama pull gemma4` |
-| `gemma4:27b` | ~17 GB | Best quality, needs 16GB VRAM | `ollama pull gemma4:27b` |
-
-repowiki auto-selects the best model from this list that you have installed.
-
----
-
-## Claude Code plugin
-
-If you use Claude Code, install as a plugin — uses your existing session, nothing to configure:
-
-```
-/plugin install repowiki
-/repowiki
-```
-
----
 
 ## Output structure
 
@@ -95,19 +45,22 @@ If you use Claude Code, install as a plugin — uses your existing session, noth
 ├── Overview/
 │   └── Project Overview.md
 ├── Architecture/
-│   ├── Overview.md
+│   ├── System Architecture.md
 │   └── Data Flow.md
 ├── Database/
-│   ├── Schema Overview.md
 │   └── Models Reference.md
-├── API/
-│   └── REST Endpoints.md
 ├── ... (sections adapt to your repo)
 └── _meta/
     └── repowiki-metadata.json
 ```
 
----
+Open in Obsidian: `Settings (⚙) → Open vault → select .repowiki/`
+
+## Standalone CLI version
+
+Looking for the standalone CLI (Ollama/OpenAI/Claude API, no Claude Code needed)?
+
+→ [repowiki-cli](https://github.com/coentraojpt/repowiki-cli)
 
 ## License
 
