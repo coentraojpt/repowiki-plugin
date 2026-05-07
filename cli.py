@@ -22,6 +22,7 @@ Requirements:
 from __future__ import annotations
 
 import argparse
+import concurrent.futures
 import json
 import os
 import re
@@ -671,23 +672,20 @@ First time? Install Ollama then pull a model:
     print(f"      cached: {extracted['cache_hits']} files · extracted: {extracted['cache_misses']} files")
 
     # ── Phase 4: Generate
-    print(f"\n[4/5] Generating wiki ({len(architecture['sections'])} sections)...")
+    print(f"\n[4/5] Generating wiki ({len(architecture['sections'])} sections, parallel)...")
     total_pages = 0
 
-    for section in architecture["sections"]:
-        print(f"      {section['title']}...", end=" ", flush=True)
-
+    def _generate_section(section: dict) -> tuple[str, int]:
+        """Generate one section; returns (title, pages_written)."""
         source_text = extracted["sections"].get(section["id"], "")
         if not source_text.strip():
-            print("(no readable files — skipped)")
-            continue
+            return section["title"], -1  # -1 signals "skipped"
 
         prompt = build_prompt(section, source_text, args.lang, args.depth)
         try:
             response = provider.generate(prompt)
         except Exception as e:
-            print(f"ERROR: {e}")
-            continue
+            return section["title"], 0  # 0 signals "error"
 
         pages = parse_pages(response, section)
         written = 0
@@ -695,8 +693,20 @@ First time? Install Ollama then pull a model:
             if content.strip():
                 write_page(output_dir, section["output_dir"], page_name, content)
                 written += 1
-                total_pages += 1
-        print(f"{written} page(s) written")
+        return section["title"], written
+
+    max_workers = min(len(architecture["sections"]), 4)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {executor.submit(_generate_section, s): s for s in architecture["sections"]}
+        for future in concurrent.futures.as_completed(futures):
+            title, written = future.result()
+            if written == -1:
+                print(f"      {title}: (no readable files — skipped)")
+            elif written == 0:
+                print(f"      {title}: ERROR")
+            else:
+                print(f"      {title}: {written} page(s) written")
+                total_pages += written
 
     # ── Phase 5: Finalize
     print("\n[5/5] Finalizing...")
