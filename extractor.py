@@ -376,3 +376,31 @@ def extract_repo(repo_root: Path, architecture: dict, depth: str, output_dir: Pa
         _save_cache(cache_path, cache)
 
     return {"sections": sections_text, "cache_hits": hits, "cache_misses": misses}
+
+
+if __name__ == "__main__":
+    import argparse as _argparse
+
+    _p = _argparse.ArgumentParser(description="repowiki pre-extractor — compress source files into structural text")
+    _p.add_argument("--repo", type=Path, default=Path("."), help="Repository root (default: .)")
+    _p.add_argument("--arch", type=Path, required=True, help="Path to _architecture.json")
+    _p.add_argument("--output", type=Path, default=Path(".repowiki"), help="Output directory (default: .repowiki)")
+    _p.add_argument("--depth", choices=["shallow", "medium", "deep"], default="medium",
+                    help="Extraction depth (default: medium)")
+    _a = _p.parse_args()
+
+    _repo_root = _a.repo.resolve()
+    _arch_data = json.loads(_a.arch.read_text(encoding="utf-8"))
+    _result = extract_repo(_repo_root, _arch_data, _a.depth, _a.output)
+
+    # Write each section's extracted text to .tmp/extracted/<section_id>.txt
+    _sections_dir = _a.output / ".tmp" / "extracted"
+    _sections_dir.mkdir(parents=True, exist_ok=True)
+    for _sid, _text in _result["sections"].items():
+        (_sections_dir / f"{_sid}.txt").write_text(_text, encoding="utf-8")
+
+    print(
+        f"Extracted {len(_result['sections'])} section(s) · "
+        f"cache hits: {_result['cache_hits']} · misses: {_result['cache_misses']}"
+    )
+    print(f"Output: {_sections_dir}/")

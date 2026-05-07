@@ -1,6 +1,6 @@
 ---
 description: Convert any code repository into a rich Obsidian wiki using multi-agent analysis
-allowed-tools: Bash(mkdir:*), Bash(rm -rf:*), Bash(git diff:*), Bash(git log --oneline:*)
+allowed-tools: Bash(mkdir:*), Bash(rm -rf:*), Bash(git diff:*), Bash(git log --oneline:*), Bash(python:*)
 ---
 
 Convert the current repository into an Obsidian-compatible wiki by orchestrating a pipeline of specialized sub-agents. You are the **orchestrator** — you do NOT analyze code directly. You coordinate agents and pass information between them.
@@ -92,6 +92,22 @@ If `SECTION_FILTER` is set, filter `sections` to only those whose `title` matche
 
 If `UPDATE_MODE` is true, filter `sections` to only those whose `key_files` overlap with the git-changed files list.
 
+## Step 3.5: Pre-Extraction Phase
+
+Run the extractor to compress source files into structural representations (73% fewer tokens for specialist agents):
+
+```bash
+python "<absolute path to repowiki-plugin>/extractor.py" \
+  --repo "<current working directory>" \
+  --arch "<OUTPUT_DIR>/.tmp/_architecture.json" \
+  --output "<OUTPUT_DIR>" \
+  --depth medium
+```
+
+After this runs, read each section's extracted text from `<OUTPUT_DIR>/.tmp/extracted/<section_id>.txt`. You will pass this text to the corresponding specialist agent instead of having it read raw source files.
+
+Store the extracted content as: `EXTRACTED = { section_id: file_content }` (one entry per section).
+
 ## Step 4: Create Section Directories
 
 For each section in the (possibly filtered) sections array:
@@ -116,8 +132,8 @@ Output directory: <OUTPUT_DIR>/<section.output_dir>/
 Language: <LANG>
 Context: <section.context>
 
-Read these files completely (use the Read tool on each):
-<section.key_files — one per line>
+Pre-extracted code structure (do NOT read raw files — use this instead):
+<EXTRACTED[section.id] — the pre-extracted structural text for this section>
 
 Generate these wiki pages:
 <section.pages — one per line>
