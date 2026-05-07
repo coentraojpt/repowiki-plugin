@@ -19,11 +19,11 @@ def _md5(path: Path) -> str:
 def _load_cache(cache_path: Path) -> dict:
     try:
         data = json.loads(cache_path.read_text(encoding="utf-8"))
-        if data.get("version") == _CACHE_VERSION:
+        if data.get("version") == _CACHE_VERSION and data.get("patterns_hash") == _PATTERNS_HASH:
             return data
     except Exception:
         pass
-    return {"version": _CACHE_VERSION, "entries": {}}
+    return {"version": _CACHE_VERSION, "patterns_hash": _PATTERNS_HASH, "entries": {}}
 
 
 def _save_cache(cache_path: Path, cache: dict) -> None:
@@ -83,6 +83,10 @@ _REGEX_PATTERNS: dict[str, list[tuple[str, str]]] = {
 _GENERIC_PATTERNS: list[tuple[str, str]] = [
     (r"^(?:class|def|fn|func|function)\s+(\w+)", "symbol"),
 ]
+
+_PATTERNS_HASH: str = hashlib.md5(
+    json.dumps(_REGEX_PATTERNS, sort_keys=True).encode()
+).hexdigest()[:8]
 
 
 def _extract_regex(file_path: Path, depth: str, lang: str) -> str:
@@ -283,6 +287,7 @@ def extract_repo(repo_root: Path, architecture: dict, depth: str, output_dir: Pa
     cache_path = output_dir / ".extract_cache.json"
     cache = _load_cache(cache_path)
     entries = cache.setdefault("entries", {})
+    cache["patterns_hash"] = _PATTERNS_HASH
 
     hits = 0
     misses = 0

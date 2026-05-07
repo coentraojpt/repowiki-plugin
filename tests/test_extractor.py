@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from extractor import _md5, _load_cache, _save_cache, _extract_python, _extract_regex, extract_file, extract_repo
+from extractor import _md5, _load_cache, _save_cache, _extract_python, _extract_regex, extract_file, extract_repo, _PATTERNS_HASH, _CACHE_VERSION
 
 
 class TestCache(unittest.TestCase):
@@ -41,7 +41,7 @@ class TestCache(unittest.TestCase):
 
     def test_load_cache_wrong_version_returns_empty(self):
         p = self.dir / "cache.json"
-        p.write_text(json.dumps({"version": 99, "entries": {"x": "y"}}))
+        p.write_text(json.dumps({"version": 99, "patterns_hash": _PATTERNS_HASH, "entries": {"x": "y"}}))
         cache = _load_cache(p)
         self.assertEqual(cache["entries"], {})
 
@@ -49,11 +49,25 @@ class TestCache(unittest.TestCase):
         p = self.dir / "cache.json"
         data = {
             "version": 1,
+            "patterns_hash": _PATTERNS_HASH,
             "entries": {"apps/models.py": {"hash": "abcd1234", "shallow": "# models.py"}},
         }
         _save_cache(p, data)
         loaded = _load_cache(p)
         self.assertEqual(loaded["entries"]["apps/models.py"]["shallow"], "# models.py")
+
+    def test_load_cache_invalidates_on_patterns_hash_mismatch(self):
+        """Cache with wrong patterns_hash should be treated as empty."""
+        data = {
+            "version": _CACHE_VERSION,
+            "patterns_hash": "deadbeef",  # wrong hash
+            "entries": {"some/file.py": {"hash": "abc", "medium": "cached content"}},
+        }
+        p = self.dir / "cache.json"
+        p.write_text(json.dumps(data), encoding="utf-8")
+        result = _load_cache(p)
+        self.assertEqual(result["entries"], {})
+        self.assertEqual(result["patterns_hash"], _PATTERNS_HASH)
 
 
 SIMPLE_PY = """\
