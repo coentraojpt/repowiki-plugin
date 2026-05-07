@@ -460,6 +460,19 @@ def write_metadata(output_dir: Path, architecture: dict, manifest: dict):
     )
 
 
+def get_changed_files(repo_root: Path) -> set[str]:
+    """Return set of files changed since HEAD (git diff --name-only HEAD)."""
+    import subprocess
+    try:
+        result = subprocess.run(
+            ["git", "diff", "--name-only", "HEAD"],
+            capture_output=True, text=True, cwd=str(repo_root), timeout=10,
+        )
+        return {line.strip() for line in result.stdout.splitlines() if line.strip()}
+    except Exception:
+        return set()
+
+
 # ── Ollama auto-detection ─────────────────────────────────────────────────────
 
 # Ranked preference — better models first
@@ -571,6 +584,8 @@ First time? Install Ollama then pull a model:
                         choices=["shallow", "medium", "deep"],
                         help="Extraction depth: shallow (fastest, ~90%% token reduction), "
                              "medium (default, ~73%%), deep (full code)")
+    parser.add_argument("--update", action="store_true",
+                        help="Only regenerate sections whose files changed since last commit (git diff HEAD)")
     # Advanced / hidden
     parser.add_argument("--provider", default="ollama",
                         choices=["ollama", "claude", "openai"],
@@ -620,6 +635,17 @@ First time? Install Ollama then pull a model:
     for s in architecture["sections"]:
         print(f"      → {s['title']:<35} {len(s['pages'])} page(s), "
               f"{len(s['key_files'])} key file(s)")
+
+    if args.update:
+        changed = get_changed_files(repo_root)
+        if changed:
+            architecture["sections"] = [
+                s for s in architecture["sections"]
+                if any(f in changed for f in s["key_files"])
+            ]
+            print(f"      --update: {len(architecture['sections'])} section(s) affected by {len(changed)} changed file(s)")
+        else:
+            print("      --update: no changed files detected — regenerating all sections")
 
     if args.dry_run:
         print("\nDry run — no files written. Remove --dry-run to generate.")
