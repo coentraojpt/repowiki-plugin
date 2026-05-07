@@ -8,11 +8,11 @@ Convert the current repository into an Obsidian-compatible wiki by orchestrating
 ## Usage Examples
 
 ```
-python cli.py --section "Database"   # regenerate one section only
-python cli.py --dry-run              # preview plan without generating
-python cli.py --depth shallow        # fastest: ~90% fewer input tokens
-python cli.py --depth medium         # default: ~73% fewer tokens, includes method previews
-python cli.py --depth deep           # full source code (no compression)
+/repowiki                            # generate wiki for current repo → .repowiki/
+/repowiki --section "Database"       # regenerate one section only
+/repowiki --output docs/wiki         # custom output directory
+/repowiki --lang pt                  # Portuguese output
+/repowiki --update                   # only regenerate sections with changed files
 ```
 
 ## Step 0: Parse Arguments
