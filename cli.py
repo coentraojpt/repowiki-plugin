@@ -547,6 +547,48 @@ def detect_ollama_model(host: str, preferred: str | None = None) -> str:
     return available[0]
 
 
+# ── Translate ────────────────────────────────────────────────────────────────
+
+def translate_wiki(output_dir: Path, target_lang: str, provider, args):
+    """Translate all pages in an existing wiki to target_lang."""
+    pages = list(output_dir.glob("**/*.md"))
+    pages = [p for p in pages if "_meta" not in str(p)]
+
+    lang_name = {
+        "pt": "European Portuguese (PT-PT)",
+        "en": "English",
+        "es": "Spanish",
+        "fr": "French",
+        "de": "German",
+    }.get(target_lang, target_lang)
+
+    print(f"\n[translate] Found {len(pages)} page(s) → {lang_name}")
+    translated = 0
+
+    for page in pages:
+        content = page.read_text(encoding="utf-8")
+        prompt = f"""Translate the following Obsidian wiki page to {lang_name}.
+
+RULES (MUST follow exactly):
+- Preserve verbatim: YAML frontmatter (between --- markers), [[WikiLinks]], ```mermaid blocks, all ```code blocks, > **Sources:** lines, the footer line starting with *[[index|
+- Translate only the prose text.
+- For Portuguese: use PT-PT (European), not PT-BR.
+- Output ONLY the translated page — no explanations.
+
+PAGE:
+{content}
+"""
+        try:
+            result = provider.generate(prompt)
+            page.write_text(result, encoding="utf-8")
+            translated += 1
+            print(f"      {page.relative_to(output_dir)}: translated")
+        except Exception as e:
+            print(f"      {page.relative_to(output_dir)}: ERROR — {e}")
+
+    print(f"\n✓ Translation complete: {translated}/{len(pages)} pages")
+
+
 # ── Main ─────────────────────────────────────────────────────────────────────
 
 def main():
@@ -591,7 +633,39 @@ First time? Install Ollama then pull a model:
     parser.add_argument("--provider", default="ollama",
                         choices=["ollama", "claude", "openai"],
                         help=argparse.SUPPRESS)
+    # Subcommand support
+    parser.add_argument("command", nargs="?", choices=["translate"],
+                        help="Subcommand: translate (translate existing wiki to another language)")
+    parser.add_argument("--to", type=str, default=None,
+                        help="Target language for translate command (e.g. pt, en, es)")
     args = parser.parse_args()
+
+    # Handle translate subcommand
+    if args.command == "translate":
+        if not args.to:
+            print("Error: --to <lang> is required for translate. Example: python cli.py translate --to pt")
+            sys.exit(1)
+        output_dir = (
+            Path(args.output)
+            if args.output.is_absolute()
+            else Path(".").resolve() / args.output
+        )
+        if not output_dir.exists():
+            print(f"Error: wiki directory not found: {output_dir}")
+            sys.exit(1)
+        sys.path.insert(0, str(Path(__file__).parent))
+        from providers.provider import get_provider
+        try:
+            if args.provider == "ollama":
+                model = detect_ollama_model(args.host, args.model)
+            else:
+                model = args.model or "default"
+            provider = get_provider(args.provider, model=model, host=args.host)
+        except RuntimeError as e:
+            print(f"\n{e}")
+            sys.exit(1)
+        translate_wiki(output_dir, args.to, provider, args)
+        return
 
     repo_root = args.repo.resolve()
     output_dir = (
