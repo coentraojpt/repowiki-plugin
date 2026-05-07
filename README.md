@@ -1,62 +1,97 @@
 # repowiki
 
-Convert any code repository into a rich, Obsidian-compatible wiki using multi-agent analysis.
+Convert any code repository into a rich, navigable Obsidian wiki — **runs locally, no API keys, no accounts**.
 
-## What it does
+## How it works
 
-`/repowiki` analyses your repository using a pipeline of four specialized agents:
+```
+your repo  →  repowiki  →  Obsidian vault
+```
 
-1. **Discovery** — scans every file and detects your tech stack
+Four agents work in sequence:
+1. **Discovery** — maps every file and detects your tech stack
 2. **Architect** — designs the wiki structure based on complexity
-3. **Specialists** — one per section, running in parallel, deep-reading source code
-4. **Finalizer** — resolves links, generates the vault index and knowledge graph
+3. **Specialists** — one per section, deep-reads source code in parallel
+4. **Finalizer** — resolves links, builds the index and knowledge graph
 
-The result is an Obsidian vault with `[[WikiLinks]]`, Mermaid diagrams, YAML frontmatter, and source-attributed content.
+Output is Obsidian-compatible: `[[WikiLinks]]`, Mermaid diagrams, YAML frontmatter, source-attributed content.
 
-## Install
+---
 
-```bash
-/plugin install https://github.com/coentraojpt/repowiki-plugin
+## Quickstart (2 steps)
+
+**Step 1 — Install Ollama** (free, runs on your machine):
+
+```
+https://ollama.com/download
 ```
 
-Or locally:
+**Step 2 — Pull a model and run:**
 
 ```bash
-/plugin install /path/to/repowiki-plugin
+ollama pull gemma4:9b
+
+cd /your/project
+python /path/to/repowiki/cli.py
 ```
 
-## Usage
+That's it. repowiki auto-detects the best model you have installed.
 
-```bash
-# Generate wiki for the current repo (output: .repowiki/)
-/repowiki
-
-# Custom output directory
-/repowiki --output docs/wiki
-
-# Portuguese content
-/repowiki --lang pt
-
-# Generate only one section
-/repowiki --section "Database Schema"
-
-# Regenerate only sections with changed files (git-aware)
-/repowiki --update
-```
+---
 
 ## Open in Obsidian
 
-After generation, open the output directory as an Obsidian vault:
+After generation, open the output as a vault:
 
-`Settings (⚙) → Open vault → select .repowiki/`
+`Obsidian → Settings (⚙) → Open vault → select .repowiki/`
 
-The vault entry point is `index.md`.
+Start at `index.md`.
+
+---
+
+## Options
+
+```bash
+python cli.py                        # auto-detect model, output → .repowiki/
+python cli.py --model gemma4:9b      # pick a specific model
+python cli.py --output docs/wiki     # custom output directory
+python cli.py --lang pt              # Portuguese output
+python cli.py --section "Database"   # regenerate one section only
+python cli.py --dry-run              # preview plan without generating
+```
+
+---
+
+## Recommended models
+
+| Model | Size | Notes | Install |
+|---|---|---|---|
+| `gemma4:9b` | ~6 GB | Best balance — recommended | `ollama pull gemma4:9b` |
+| `qwen2.5:7b` | ~5 GB | Strong code understanding | `ollama pull qwen2.5:7b` |
+| `llama3.1:8b` | ~5 GB | Good general purpose | `ollama pull llama3.1:8b` |
+| `gemma4` | ~2 GB | Fast, limited context | `ollama pull gemma4` |
+| `gemma4:27b` | ~17 GB | Best quality, needs 16GB VRAM | `ollama pull gemma4:27b` |
+
+repowiki auto-selects the best model from this list that you have installed.
+
+---
+
+## Claude Code plugin
+
+If you use Claude Code, install as a plugin — uses your existing session, nothing to configure:
+
+```
+/plugin install repowiki
+/repowiki
+```
+
+---
 
 ## Output structure
 
 ```
 .repowiki/
-├── index.md                    # Vault entry point
+├── index.md                  ← vault entry point
 ├── Overview/
 │   └── Project Overview.md
 ├── Architecture/
@@ -67,23 +102,12 @@ The vault entry point is `index.md`.
 │   └── Models Reference.md
 ├── API/
 │   └── REST Endpoints.md
-├── Security/
-│   └── Authentication & Security.md
-├── ... (sections depend on your repo)
+├── ... (sections adapt to your repo)
 └── _meta/
-    └── repowiki-metadata.json  # Knowledge graph
+    └── repowiki-metadata.json
 ```
 
-## Extending with other AI providers
-
-By default, repowiki uses Claude Code's session (no extra API cost). To use an external provider:
-
-```bash
-/repowiki --provider openai    # (v2 — not yet implemented)
-/repowiki --provider ollama    # (v2 — not yet implemented)
-```
-
-See `providers/provider.py` to implement a new provider by subclassing `BaseProvider`.
+---
 
 ## License
 

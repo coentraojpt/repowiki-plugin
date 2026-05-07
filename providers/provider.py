@@ -1,124 +1,194 @@
 """
-repowiki provider abstraction layer.
+repowiki provider abstraction — AI backend for standalone CLI mode.
 
-v1 uses Claude Code's native tools (no external API calls).
-This module is the extension point for v2 multi-provider support.
+Each provider receives a fully-formed prompt string and returns markdown text.
+The caller (cli.py) is responsible for building prompts.
 
-To add a new provider:
-1. Subclass BaseProvider
-2. Implement generate()
-3. Register in PROVIDERS dict
-4. Invoke via: python -m repowiki.providers --provider <name> --input <json> --output <md>
+Usage (CLI):
+  python cli.py --provider ollama --model gemma4
+  python cli.py --provider ollama --model gemma4:9b --host http://localhost:11434
+  python cli.py --provider claude          # needs ANTHROPIC_API_KEY
+  python cli.py --provider openai          # needs OPENAI_API_KEY
+
+Adding a new provider:
+  1. Subclass BaseProvider, implement generate(prompt) -> str
+  2. Add to PROVIDERS dict at the bottom
 """
 
 from __future__ import annotations
 
 import json
-import sys
+import os
+import urllib.request
+import urllib.error
 from abc import ABC, abstractmethod
-from pathlib import Path
 
 
 class BaseProvider(ABC):
-    """Common interface for all repowiki AI providers."""
-
     name: str = "base"
 
     @abstractmethod
-    def generate(self, section: dict, source_files: dict[str, str]) -> str:
-        """
-        Generate wiki markdown for a section.
+    def generate(self, prompt: str) -> str:
+        """Send prompt to AI and return the generated text."""
 
-        Args:
-            section: Section definition from _architecture.json
-            source_files: Mapping of {file_path: file_content} for key files
+    def check_available(self) -> tuple[bool, str]:
+        """Return (available, reason). Override for pre-flight checks."""
+        return True, "ok"
 
-        Returns:
-            Markdown string for the wiki page
-        """
 
-    def supports_streaming(self) -> bool:
-        return False
+# ── Ollama ──────────────────────────────────────────────────────────────────
 
+class OllamaProvider(BaseProvider):
+    """
+    Local Ollama provider. Requires Ollama running at `host`.
+
+    Recommended models for wiki generation:
+      gemma4         (2B  — fast, limited quality)
+      gemma4:9b      (9B  — good balance, 128K context)
+      gemma4:27b     (27B — best local quality)
+      llama3.2       (3B  — fast)
+      llama3.1:8b    (8B  — good general purpose)
+      qwen2.5:7b     (7B  — strong code understanding)
+      phi4           (14B — Microsoft, good docs)
+
+    Install a model: ollama pull gemma4:9b
+    """
+
+    name = "ollama"
+
+    def __init__(self, model: str = "gemma4", host: str = "http://localhost:11434"):
+        self.model = model
+        self.host = host.rstrip("/")
+
+    def check_available(self) -> tuple[bool, str]:
+        try:
+            req = urllib.request.Request(f"{self.host}/api/tags")
+            with urllib.request.urlopen(req, timeout=3) as resp:
+                data = json.loads(resp.read())
+            models = [m["name"].split(":")[0] for m in data.get("models", [])]
+            model_base = self.model.split(":")[0]
+            if model_base not in models and self.model not in [m["name"] for m in data.get("models", [])]:
+                available = ", ".join(m["name"] for m in data.get("models", [])) or "none"
+                return False, f"Model '{self.model}' not found in Ollama. Available: {available}\nRun: ollama pull {self.model}"
+            return True, "ok"
+        except urllib.error.URLError:
+            return False, f"Ollama not running at {self.host}\nStart with: ollama serve"
+        except Exception as e:
+            return False, f"Ollama check failed: {e}"
+
+    def generate(self, prompt: str) -> str:
+        payload = json.dumps({
+            "model": self.model,
+            "prompt": prompt,
+            "stream": False,
+            "options": {
+                "temperature": 0.3,      # lower = more factual, less creative
+                "num_predict": 4096,     # max tokens to generate
+                "num_ctx": 8192,         # context window (increase if model supports)
+            },
+        }).encode("utf-8")
+
+        req = urllib.request.Request(
+            f"{self.host}/api/generate",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+
+        try:
+            with urllib.request.urlopen(req, timeout=300) as resp:
+                result = json.loads(resp.read())
+                return result.get("response", "")
+        except urllib.error.URLError as e:
+            raise RuntimeError(f"Ollama request failed: {e}")
+
+
+# ── Claude (Anthropic API) ──────────────────────────────────────────────────
 
 class ClaudeProvider(BaseProvider):
     """
-    Default provider: uses the Anthropic API directly.
-    Requires ANTHROPIC_API_KEY environment variable.
+    Anthropic Claude API provider.
+    Requires: pip install anthropic  +  ANTHROPIC_API_KEY env var.
+    Uses prompt caching on the system prompt for cost efficiency.
     """
 
     name = "claude"
+    DEFAULT_MODEL = "claude-sonnet-4-6"
 
-    def generate(self, section: dict, source_files: dict[str, str]) -> str:
+    def __init__(self, model: str = DEFAULT_MODEL, **_):
+        self.model = model
+
+    def check_available(self) -> tuple[bool, str]:
+        if not os.environ.get("ANTHROPIC_API_KEY"):
+            return False, "ANTHROPIC_API_KEY environment variable not set"
         try:
-            import anthropic
+            import anthropic  # noqa: F401
+            return True, "ok"
         except ImportError:
-            raise RuntimeError("anthropic package required: pip install anthropic")
+            return False, "anthropic package not installed. Run: pip install anthropic"
+
+    def generate(self, prompt: str) -> str:
+        import anthropic
 
         client = anthropic.Anthropic()
-        files_block = "\n\n".join(
-            f"### {path}\n```\n{content}\n```"
-            for path, content in source_files.items()
-        )
-        prompt = (
-            f"Generate a comprehensive wiki page for the '{section['title']}' section.\n\n"
-            f"Context: {section.get('context', '')}\n\n"
-            f"Source files:\n{files_block}"
-        )
         message = client.messages.create(
-            model="claude-sonnet-4-6",
+            model=self.model,
             max_tokens=4096,
             messages=[{"role": "user", "content": prompt}],
         )
         return message.content[0].text
 
 
+# ── OpenAI ──────────────────────────────────────────────────────────────────
+
 class OpenAIProvider(BaseProvider):
     """
-    OpenAI provider stub. Requires OPENAI_API_KEY environment variable.
+    OpenAI API provider.
+    Requires: pip install openai  +  OPENAI_API_KEY env var.
     """
 
     name = "openai"
+    DEFAULT_MODEL = "gpt-4o-mini"
 
-    def generate(self, section: dict, source_files: dict[str, str]) -> str:
-        raise NotImplementedError("OpenAI provider not yet implemented")
+    def __init__(self, model: str = DEFAULT_MODEL, **_):
+        self.model = model
+
+    def check_available(self) -> tuple[bool, str]:
+        if not os.environ.get("OPENAI_API_KEY"):
+            return False, "OPENAI_API_KEY environment variable not set"
+        try:
+            import openai  # noqa: F401
+            return True, "ok"
+        except ImportError:
+            return False, "openai package not installed. Run: pip install openai"
+
+    def generate(self, prompt: str) -> str:
+        from openai import OpenAI
+
+        client = OpenAI()
+        response = client.chat.completions.create(
+            model=self.model,
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=4096,
+            temperature=0.3,
+        )
+        return response.choices[0].message.content
 
 
-class OllamaProvider(BaseProvider):
-    """
-    Local Ollama provider stub. Requires Ollama running at localhost:11434.
-    """
-
-    name = "ollama"
-
-    def generate(self, section: dict, source_files: dict[str, str]) -> str:
-        raise NotImplementedError("Ollama provider not yet implemented")
-
+# ── Registry ─────────────────────────────────────────────────────────────────
 
 PROVIDERS: dict[str, type[BaseProvider]] = {
+    "ollama": OllamaProvider,
     "claude": ClaudeProvider,
     "openai": OpenAIProvider,
-    "ollama": OllamaProvider,
 }
 
 
-def get_provider(name: str) -> BaseProvider:
+def get_provider(name: str, **kwargs) -> BaseProvider:
     if name not in PROVIDERS:
         raise ValueError(f"Unknown provider '{name}'. Available: {list(PROVIDERS)}")
-    return PROVIDERS[name]()
-
-
-if __name__ == "__main__":
-    import argparse
-
-    parser = argparse.ArgumentParser(description="repowiki provider CLI")
-    parser.add_argument("--provider", default="claude", choices=list(PROVIDERS))
-    parser.add_argument("--input", required=True, help="Path to section JSON file")
-    parser.add_argument("--output", required=True, help="Path to write wiki markdown")
-    args = parser.parse_args()
-
-    section = json.loads(Path(args.input).read_text(encoding="utf-8"))
-    provider = get_provider(args.provider)
-    result = provider.generate(section, source_files={})
-    Path(args.output).write_text(result, encoding="utf-8")
-    print(f"Written to {args.output}")
+    provider = PROVIDERS[name](**kwargs)
+    ok, reason = provider.check_available()
+    if not ok:
+        raise RuntimeError(f"Provider '{name}' not available:\n  {reason}")
+    return provider
